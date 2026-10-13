@@ -30,7 +30,7 @@ runs:
   steps:
     - name: Name the image
       shell: bash
-      run: echo "PRESTON_RUNNER_IMAGE=ghcr.io/rodrigopsasaki/preston-runner@sha256:67110abaca61e1262dfc6ab15d5393e81f32276b7b12cbb0f9c6c282641ea02b" >> "$GITHUB_ENV"
+      run: echo "PRESTON_RUNNER_IMAGE=ghcr.io/rodrigopsasaki/preston-runner@sha256:ca581abbc919748a5fe60f0923cbdb223cf82f832a0558f808ec169833204ced" >> "$GITHUB_ENV"
 
     - name: Install cosign
       uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
