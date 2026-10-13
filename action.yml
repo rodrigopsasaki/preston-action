@@ -1,0 +1,110 @@
+name: Preston
+description: >-
+  Verify the signature of Preston's runner image with the publisher's public key, then run that image, by digest,
+  as one review, writer or brain-admin job.
+
+# The workflow that uses this action starts every job with a network firewall (see preston.yml); a composite action
+# cannot do that for its own job. This action does the part a workflow file cannot: it refuses to run an image it
+# could not verify. The image reference below is the only place the image is named; the release procedure replaces
+# the marked placeholder with the digest the signed release prints, and until then the action refuses to run.
+
+inputs:
+  job:
+    description: "review, writer or brain-admin"
+    required: true
+  action:
+    description: "writer and brain-admin by hand: climb, fresh-climb, rollback, hold or release (empty on a schedule)"
+    required: false
+    default: ""
+  generation:
+    description: "rollback only: the generation to move the pointer back to"
+    required: false
+    default: ""
+  reason:
+    description: "rollback and hold: why, in a sentence"
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Name the image
+      shell: bash
+      run: echo "PRESTON_RUNNER_IMAGE=ghcr.io/rodrigopsasaki/preston-runner@sha256:bcd0372d8f9bd131927f708b46e01a66fad11b54c329582f736211f649c37ceb" >> "$GITHUB_ENV"
+
+    - name: Install cosign
+      uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      with:
+        cosign-release: v3.0.6
+
+    - name: Refuse a placeholder image reference
+      shell: bash
+      run: |
+        if [[ "$PRESTON_RUNNER_IMAGE" == *REPLACE_* ]]; then
+          echo "::error::Preston's runner image reference is still a placeholder ($PRESTON_RUNNER_IMAGE); use a release of this action that names a signed image digest."
+          exit 1
+        fi
+
+    - name: Verify the image signature with the committed public key
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: cosign verify --key "$ACTION_PATH/cosign.pub" --insecure-ignore-tlog=true "$PRESTON_RUNNER_IMAGE"
+
+    - name: Pull the verified image by digest
+      shell: bash
+      run: docker pull "$PRESTON_RUNNER_IMAGE"
+
+    - name: Refuse a runner whose user is not the image user
+      shell: bash
+      run: |
+        image_uid=1001
+        runner_uid="$(id -u)"
+        if [[ "$runner_uid" != "$image_uid" ]]; then
+          echo "::error::This runner's user id is $runner_uid but Preston's image runs as user id $image_uid, so it could not write the workspace or the step summary this job mounts; run the job on a runner whose user id is $image_uid."
+          exit 1
+        fi
+
+    - name: Run the image
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        PRESTON_JOB: ${{ inputs.job }}
+        PRESTON_DISPATCH_ACTION: ${{ inputs.action }}
+        PRESTON_ADMIN_GENERATION: ${{ inputs.generation }}
+        PRESTON_ADMIN_REASON: ${{ inputs.reason }}
+      run: |
+        docker run --rm --shm-size=1g \
+          -v "$GITHUB_WORKSPACE:/workspace" \
+          -v "$GITHUB_EVENT_PATH:$GITHUB_EVENT_PATH:ro" \
+          -v "$GITHUB_STEP_SUMMARY:$GITHUB_STEP_SUMMARY" \
+          -e GITHUB_WORKSPACE=/workspace \
+          -e GITHUB_REPOSITORY_ID \
+          -e GITHUB_REPOSITORY \
+          -e GITHUB_EVENT_NAME \
+          -e GITHUB_EVENT_PATH \
+          -e GITHUB_RUN_ID \
+          -e GITHUB_RUN_ATTEMPT \
+          -e GITHUB_ACTOR \
+          -e GITHUB_REF \
+          -e GITHUB_STEP_SUMMARY \
+          -e GITHUB_API_URL \
+          -e GITHUB_TOKEN \
+          -e PRESTON_EGRESS_ALLOW \
+          -e PRESTON_JOB \
+          -e PRESTON_DISPATCH_ACTION \
+          -e PRESTON_ADMIN_GENERATION \
+          -e PRESTON_ADMIN_REASON \
+          -e PRESTON_LLM_API_KEY \
+          -e PRESTON_AGE_IDENTITY \
+          -e PRESTON_AGE_RECIPIENTS \
+          -e PRESTON_PROVIDER \
+          -e PRESTON_RUN_CEILING_USD \
+          -e PRESTON_REREVIEW_ON_PUSH \
+          -e PRESTON_R2_ENDPOINT \
+          -e PRESTON_R2_BUCKET \
+          -e PRESTON_R2_READ_KEY_ID \
+          -e PRESTON_R2_READ_SECRET \
+          -e PRESTON_R2_WRITE_KEY_ID \
+          -e PRESTON_R2_WRITE_SECRET \
+          "$PRESTON_RUNNER_IMAGE"
