@@ -1,8 +1,10 @@
 # preston.yml: the workflow a repository adds at .github/workflows/preston.yml to have Preston read it.
 #
 # What it does, in three jobs that share one image and one brain:
-#   review       reads the brain, reads the pull request, posts at most one COMMENT review per head,
-#                or nothing when it has nothing new. It holds a read-only credential for the brain.
+#   review       reads the brain, reads the pull request, posts a COMMENT review: at most one per head on its
+#                own events, and one more for each /preston review comment. On a push with nothing new it
+#                stays silent; a review someone asks for always replies once it reaches a verdict. It holds
+#                a read-only credential for the brain.
 #   writer       once a day, only if the default branch moved (and by hand): brings the brain up to the
 #                tip of the default branch and swaps the pointer. Its write credential lives in the
 #                `preston-brain` Environment, whose deployment branch policy is `main` only, so a pull
